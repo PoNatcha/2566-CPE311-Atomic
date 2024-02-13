@@ -21,3 +21,113 @@
 
 7. Main Functionality:
     - Check the status of sensors and devices that need to be controlled and control their operations based on predefined conditions.
+
+// System Configuration
+void SystemClock_Config(void);
+void GPIO_Config(void);
+void TIM_BASE_Config(uint16_t);
+void TIM_OC_GPIO_Config(void);
+void TIM_OC_Config(uint16_t);
+void UtrSnc_GPIO_Config(void);
+void TIMx_IC_Config(void);
+void TIM_OC_Speaker_config(uint16_t);
+
+// Global variables
+float period, distance;
+uint16_t uwIC1 = 0;
+uint16_t uwIC2 = 0;
+uint16_t uwDiff = 0;
+uint16_t uhICIndex = 0;
+uint32_t TIM2CLK;
+uint32_t PSC;
+uint32_t IC1PSC;
+
+int main() {
+    SystemClock_Config();
+    UtrSnc_GPIO_Config();
+    TIMx_IC_Config();
+    GPIO_Config();
+    TIM_OC_Config(E_O6);
+    
+    int cnt1 = 0;
+    int LftIR = LL_GPIO_IsInputPinSet(GPIOB, LL_GPIO_PIN_10);
+    int RghtIR = LL_GPIO_IsInputPinSet(GPIOB, LL_GPIO_PIN_11);
+    LL_GPIO_SetOutputPin(GPIOB, LL_GPIO_PIN_6);
+    LL_GPIO_SetOutputPin(GPIOB, LL_GPIO_PIN_7);
+    
+    while (1) {
+        // Sonar activates
+        LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_0);
+        LL_mDelay(1);
+        LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_0);
+        if (uhICIndex == 2) {
+            PSC = LL_TIM_GetPrescaler(TIM2) + 1;
+            TIM2CLK = SystemCoreClock / PSC;
+            IC1PSC = __LL_TIM_GET_ICPSC_RATIO(LL_TIM_IC_GetPrescaler(TIM2, LL_TIM_CHANNEL_CH1));
+            period = (uwDiff * (PSC) * 1.0) / (TIM2CLK * IC1PSC * 1.0);
+            distance = (period * 170) * 100;
+            uhICIndex = 0;
+        }
+        
+        if (distance <= 10) {
+            // Sonar found
+            LL_TIM_OC_SetCompareCH1(TIM3, 0);
+            LL_TIM_OC_SetCompareCH2(TIM3, 0);
+            while (distance <= 10) {
+                LL_TIM_OC_SetCompareCH1(TIM3, 30);
+                LL_TIM_OC_SetCompareCH2(TIM3, 50);
+            }
+            if (distance != 10) {
+                LL_TIM_OC_SetCompareCH1(TIM3, 50);
+                LL_TIM_OC_SetCompareCH2(TIM3, 25);
+                LL_mDelay(1500);
+                LL_TIM_OC_SetCompareCH1(TIM3, 50);
+                LL_TIM_OC_SetCompareCH2(TIM3, 50);
+                if (LftIR == 1 || RghtIR == 1) {
+                    goto moving;
+                }
+            }
+        }
+        
+        moving:
+        if (LftIR == 1 && RghtIR == 1) {
+            LL_TIM_OC_SetCompareCH1(TIM3, 50);
+            LL_TIM_OC_SetCompareCH2(TIM3, 50);
+        } else if (LftIR == 1 && RghtIR == 0) {
+            LL_TIM_OC_SetCompareCH1(TIM3, 25);
+            LL_TIM_OC_SetCompareCH2(TIM3, 50);
+        } else if (LftIR == 0 && RghtIR == 1) {
+            LL_TIM_OC_SetCompareCH1(TIM3, 50);
+            LL_TIM_OC_SetCompareCH2(TIM3, 25);
+        }
+    }
+}
+
+// Timer 2 Interrupt Handler
+void TIM2_IRQHandler(void) {
+    if (LL_TIM_IsActiveFlag_CC1(TIM2) == SET) {
+        LL_TIM_ClearFlag_CC1(TIM2);
+        if (uhICIndex == 0) {
+            uwIC1 = LL_TIM_IC_GetCaptureCH1(TIM2);
+            uhICIndex = 1;
+        } else if (uhICIndex == 1) {
+            uwIC2 = LL_TIM_IC_GetCaptureCH1(TIM2);
+            if (uwIC2 > uwIC1) {
+                uwDiff = uwIC2 - uwIC1;
+            } else if (uwIC2 < uwIC1) {
+                uwDiff = ((LL_TIM_GetAutoReload(TIM2) - uwIC1) + uwIC2) + 1;
+            }
+            uhICIndex = 2;
+        }
+    }
+}
+
+// EXTI 13-10 Interrupt Handler
+void EXTI15_10_IRQHandler(void) {
+    if (LL_EXTI_IsActiveFlag_0_31(LL_EXTI_LINE_13)) {
+        if (distance < 10) {
+            TIM_OC_Speaker_config(ARR_CALCULATE(E_O6));
+        }
+        LL_EXTI_ClearFlag_0_31(LL_EXTI_LINE_13);
+    }
+}
