@@ -21,7 +21,7 @@
 
 7. Main Functionality:
     - Check the status of sensors and devices that need to be controlled and control their operations based on predefined conditions.
-
+------------------------------------------------------------------------------------------------------------------------------------------------------------------
 // System Configuration
 void SystemClock_Config(void);
 void GPIO_Config(void);
