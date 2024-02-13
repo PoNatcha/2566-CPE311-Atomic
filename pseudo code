@@ -1,1 +1,23 @@
+1. System Configuration:
+    - Configure library usage and related variables.
+    - Set up PLL to achieve a system frequency of 32MHz.
 
+2. GPIO Configuration:
+    - Set configurations for GPIO pins used for various devices using different modes and settings.
+
+3. Timer Configuration:
+    - Configure timers used for data storage or PWM generation.
+
+4. PWM Signal Generation:
+    - Set up Output Compare (OC) values of timers to generate PWM signals for controlling motors and generating sound.
+
+5. Sensor Configuration and Handling:
+    - Configure GPIO and timers for Ultrasonic Sensor.
+    - Handle interruptions and events triggered by sensor interruptions.
+
+6. Peripheral Configuration and Handling:
+    - Set configurations for GPIO and timers for other peripherals such as Speaker.
+    - Handle interruptions and events triggered by peripheral interruptions.
+
+7. Main Functionality:
+    - Check the status of sensors and devices that need to be controlled and control their operations based on predefined conditions.
