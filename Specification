@@ -2,9 +2,41 @@
 
 สรุปแต่ละฟังชั่นและการทำงาน
 
-SystemClock_Config(): ฟังก์ชันนี้ใช้ในการตั้งค่าระบบนาฬิกาของไมโครคอนโทรลเลอร์ โดยกำหนดค่าต่าง ๆ เช่นความเร็ว, และส่วนประมวลผลของระบบ โดยค่าเหล่านี้ถูกกำหนดให้กับอินพุตและเอาต์พุตของระบบเวลาที่กำหนด
-IR_Config() และ IR_Check(): ฟังก์ชันนี้ใช้ในการกำหนดค่าและตรวจสอบข้อมูลจากเซนเซอร์อินฟราเรดที่ติดตั้งในหุ่นยนต์ โดยกำหนดการทำงานและอ่านค่าจากขา GPIO ที่เชื่อมต่อกับเซนเซอร์
-Motors_Config(): ฟังก์ชันนี้ใช้ในการกำหนดค่าและตั้งค่าขา GPIO สำหรับการควบคุมมอเตอร์
-Ultrasonic_Config() และ Ultrasonic_IC_Config(): ฟังก์ชันนี้ใช้ในการกำหนดค่าและตั้งค่าเซนเซอร์อัลตราโซนิกเพื่อวัดระยะทาง รวมถึงการตั้งค่าโหมดขา GPIO เพื่อให้สามารถทำงานร่วมกับเซนเซอร์ได้อย่างเหมาะสม
-TIM2_IRQHandler(): ฟังก์ชันนี้ใช้ในการจัดการกับการขาดความเร็วของหน่วยนับเวลาได้อย่างถูกต้อง
-TIM_BASE_Config() และ TIM_OC_Config(): ฟังก์ชันเหล่านี้ใช้ในการกำหนดค่าและตั้งค่าการขับเคลื่อน PWM บนหน่วยนับเวลา โดยที่ TIM_BASE_Config() จะใช้ในการตั้งค่าการนับเวลาพื้นฐาน และ TIM_OC_Config() จะใช้ในการตั้งค่าของขาขับ PWM
+SystemClock_Config: ฟังก์ชันนี้ใช้กำหนดค่าระบบนาฬิกาและพลังงานให้กับไมโครคอนโทรเลอร์ โดยตั้งค่าความถี่ของระบบนาฬิกาและใช้งานโหมดการทำงานของ PLL เพื่อสร้างความถี่ที่ต้องการ.
+
+IR_Config: ฟังก์ชันนี้ใช้ในการกำหนดค่าของขา GPIO สำหรับอ่านข้อมูลจากตัววัดระยะทางอินฟราเรด (IR Sensor) โดยกำหนดให้ IR1 อยู่ที่ขา GPIOA Pin 3 และ IR2 อยู่ที่ขา GPIOD Pin 2.
+
+Configl293d_GPIO, Timbase_conf, TIM_OC_GPIO_conf, TIM_OC_Config: เป็นฟังก์ชันที่ใช้กำหนดค่า GPIO และการทำงานของ Timer สำหรับควบคุมมอเตอร์ชุดที่ 1 โดยใช้ PWM (Pulse Width Modulation) เพื่อควบคุมความเร็วของมอเตอร์.
+
+Configl293d_2_GPIO, Timbase_2_conf, TIM_OC_GPIO_2_conf, TIM_OC_2_Config: เป็นฟังก์ชันที่ใช้กำหนดค่า GPIO และการทำงานของ Timer สำหรับควบคุมมอเตอร์ชุดที่ 2 โดยใช้ PWM เช่นเดียวกับชุดที่ 1.
+
+Utr_GPIO_Config, TIMx_IC_Config: เป็นฟังก์ชันที่ใช้ในการกำหนดค่า GPIO และ Timer สำหรับใช้งานตัววัดระยะทางอัลตราโซนิก เพื่อวัดระยะทางต่อหน้าหุ่นยนต์.
+
+speaker_TIM_BASE_Config, speaker_TIM_OC_GPIO_Config, speaker_TIM_OC_Config: เป็นฟังก์ชันที่ใช้ในการกำหนดค่า Timer และ PWM เพื่อสร้างเสียงจากสมองเสียง.
+
+IR_Check: ฟังก์ชันนี้ใช้ในการตรวจสอบสถานะของตัววัด IR ว่ามีสิ่งกีดขวางหรือไม่.
+
+avoid: ฟังก์ชันนี้ใช้ในการหลีกเลี่ยงอุปสรรคโดยส่งสัญญาณเสียงและปรับความเร็วของมอเตอร์.
+
+main: ฟังก์ชันหลักของโปรแกรมซึ่งเรียกใช้ฟังก์ชันต่าง ๆ เพื่อควบคุมพฤติกรรมของหุ่นยนต์ตามเงื่อนไขที่กำหนด.
+
+
+
+SystemClock_Config: Configures the system clock and power settings for the microcontroller, including setting the clock frequency and activating the PLL (Phase-Locked Loop) to generate the desired frequency.
+
+IR_Config: Configures GPIO pins to read data from IR sensors, specifically IR1 on GPIOA Pin 3 and IR2 on GPIOD Pin 2.
+
+Configl293d_GPIO, Timbase_conf, TIM_OC_GPIO_conf, TIM_OC_Config: Functions for configuring GPIO and Timer settings to control motors using PWM (Pulse Width Modulation) for motor set 1.
+
+Configl293d_2_GPIO, Timbase_2_conf, TIM_OC_GPIO_2_conf, TIM_OC_2_Config: Similar to the above functions but for motor set 2.
+
+Utr_GPIO_Config, TIMx_IC_Config: Functions for configuring GPIO and Timer settings for ultrasonic sensor operation, used for distance measurement.
+
+speaker_TIM_BASE_Config, speaker_TIM_OC_GPIO_Config, speaker_TIM_OC_Config: Functions for configuring Timer and PWM to generate sound from a buzzer.
+
+IR_Check: Checks the status of IR sensors to detect obstacles.
+
+avoid: Function to avoid obstacles by emitting sound signals and adjusting motor speed.
+
+main: The main function of the program, which calls various functions to control the robot's behavior based on predefined conditions.
+
