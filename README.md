@@ -4,3 +4,12 @@ gantt chart and pin
 https://docs.google.com/spreadsheets/d/1366nv0hE6zNKZosJoNAOt66VefVGS7_JwEBw0Rvewgk/edit#gid=1115838130
 
 
+circuit diagram
+![image](https://github.com/PoNatcha/2566-CPE311-Atomic/files/14275223/Untitled.Diagram.drawio.pdf)
+
+
+
+
+
+
+
