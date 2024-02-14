@@ -10,204 +10,182 @@
 #include "stm32l1xx_ll_exti.h"
 #include "stm32l1xx_ll_tim.h"
 
-#define E_O6					(uint16_t)1318
-/*for 10ms update event*/
 #define TIMx_PSC 3200
 #define TIMx_ARR 100
 
-void SystemClock_Config(void);
-void IR_Config(void);
-void IR_Check(void);
-void Mtr_Config(void);
-void Mtr_TIM_BASE_Config(void);
-void Mtr_TIM_OC_GPIO_Config(void);
-void Mtr_TIM_OC_Config(void);
-void Utr_GPIO_Config(void);
-void TIMx_IC_Config(void);
-void TIM_BASE_Config(uint16_t);
-void TIM_OC_GPIO_Config(void);
-void TIM_OC_Config(uint16_t);
+#define IR_SENSOR_LEFT_PIN  LL_GPIO_PIN_3
+#define IR_SENSOR_RIGHT_PIN LL_GPIO_PIN_4
+#define US_TRIG_PIN         LL_GPIO_PIN_1
+#define US_ECHO_PIN         LL_GPIO_PIN_2
+#define MOTOR_LEFT_PIN1     LL_GPIO_PIN_6
+#define MOTOR_LEFT_PIN2     LL_GPIO_PIN_7
+#define MOTOR_RIGHT_PIN1    LL_GPIO_PIN_10
+#define MOTOR_RIGHT_PIN2    LL_GPIO_PIN_11
+#define SPEAKER_PIN         LL_GPIO_PIN_8
 
-uint16_t IR1=0, IR2=0;
+uint16_t IR1 = 0, IR2 = 0;
 uint16_t uwIC1 = 0;
 uint16_t uwIC2 = 0;
 uint16_t uwDiff = 0;
 uint16_t uhICIndex = 0;
-
 uint32_t TIM2CLK;
 uint32_t PSC;
 uint32_t IC1PSC;
-
 float period, distance;
 
-int main()
+void SystemClock_Config(void);
+void IR_Config(void);
+void IR_Check(void);
+void Motors_Config(void);
+void Ultrasonic_Config(void);
+void Ultrasonic_Trigger(void);
+void TIM2_IRQHandler(void);
+void TIM_BASE_Config(uint16_t ARR);
+void TIM_OC_Config(uint16_t note);
+
+int main() {
+    SystemClock_Config();
+    IR_Config();
+    Motors_Config();
+    Ultrasonic_Config();
+
+    while (1) {
+        IR_Check();
+
+        if (uhICIndex == 2) {
+            PSC = LL_TIM_GetPrescaler(TIM2) + 1;
+            TIM2CLK = SystemCoreClock / PSC;
+            IC1PSC = __LL_TIM_GET_ICPSC_RATIO(LL_TIM_IC_GetPrescaler(TIM2, LL_TIM_CHANNEL_CH2));
+
+            period = (uwDiff * (PSC) * 1.0) / (TIM2CLK * IC1PSC * 1.0);
+            distance = (period * 170) * 100;
+
+            uhICIndex = 0;
+        }
+
+        if (IR1 == 0 && IR2 == 0) {
+            // Both sensors detect the line, move forward
+            LL_TIM_OC_SetCompareCH1(TIM3, 50);
+						LL_TIM_OC_SetCompareCH2(TIM3, 50);
+						LL_GPIO_SetOutputPin(GPIOB,LL_GPIO_PIN_6);
+						LL_GPIO_SetOutputPin(GPIOB,LL_GPIO_PIN_7);
+        } else if (IR1 == 0 && IR2 == 1) {
+            // Left sensor detects the line, adjust to the right
+            LL_TIM_OC_SetCompareCH1(TIM3, 50);
+						LL_GPIO_ResetOutputPin(GPIOB,LL_GPIO_PIN_7);
+        } else if (IR1 == 1 && IR2 == 0) {
+            // Right sensor detects the line, adjust to the left
+            LL_TIM_OC_SetCompareCH2(TIM3, 50);
+						LL_GPIO_ResetOutputPin(GPIOB,LL_GPIO_PIN_6);
+        } else {
+            // No sensors detect the line, stop or perform obstacle avoidance
+            LL_GPIO_ResetOutputPin(GPIOB,LL_GPIO_PIN_6);
+						LL_GPIO_ResetOutputPin(GPIOB,LL_GPIO_PIN_7);
+            // Add obstacle avoidance logic here if needed
+        }
+
+    }
+}
+
+void IR_Config(void) {
+    LL_GPIO_InitTypeDef IR_Config;
+    LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOB);
+
+    IR_Config.Mode = LL_GPIO_MODE_INPUT;
+    IR_Config.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
+    IR_Config.Speed = LL_GPIO_SPEED_FREQ_VERY_HIGH;
+    IR_Config.Pull = LL_GPIO_PULL_NO;
+
+    IR_Config.Pin = IR_SENSOR_LEFT_PIN;
+    LL_GPIO_Init(GPIOB, &IR_Config);
+
+    IR_Config.Pin = IR_SENSOR_RIGHT_PIN;
+    LL_GPIO_Init(GPIOB, &IR_Config);
+}
+
+void IR_Check(void) {
+    IR1 = LL_GPIO_IsInputPinSet(GPIOB, IR_SENSOR_LEFT_PIN);
+    IR2 = LL_GPIO_IsInputPinSet(GPIOB, IR_SENSOR_RIGHT_PIN);
+}
+
+void Configl293d_1_GPIO(void)
 {
-	SystemClock_Config();
-	IR_Config();
-	Mtr_Config();
-	Mtr_TIM_BASE_Config();
-	Mtr_TIM_OC_GPIO_Config();
-	Mtr_TIM_OC_Config();
-	Utr_GPIO_Config();
-	TIMx_IC_Config();
+	LL_GPIO_InitTypeDef l293d_initstruct;
 	
-	while(1){
-		LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_2);
-        LL_mDelay(1);
-        LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_2);
-		IR_Check();
-		if(uhICIndex == 2)
-		{
-			//Period calculation
-			PSC = LL_TIM_GetPrescaler(TIM2) + 1;
-			TIM2CLK = SystemCoreClock / PSC;
-			IC1PSC = __LL_TIM_GET_ICPSC_RATIO(LL_TIM_IC_GetPrescaler(TIM2, LL_TIM_CHANNEL_CH2));
-
-			period = (uwDiff*(PSC) * 1.0) / (TIM2CLK*IC1PSC*1.0); // calculate uptime period
-			distance = (period*170)*100; //show in centimete
-			uhICIndex = 0;
-		}
-		if(period<10){
-			LL_GPIO_SetOutputPin(GPIOB,LL_GPIO_PIN_6);
-			LL_GPIO_SetOutputPin(GPIOB,LL_GPIO_PIN_7);
-			LL_TIM_OC_SetCompareCH1(TIM3,75);
-			LL_TIM_OC_SetCompareCH2(TIM3,50);
-			LL_mDelay(1500);
-			LL_TIM_OC_SetCompareCH1(TIM3,50);
-			LL_TIM_OC_SetCompareCH2(TIM3,50);
-			LL_mDelay(2000);
-			LL_TIM_OC_SetCompareCH1(TIM3,50);
-			LL_TIM_OC_SetCompareCH2(TIM3,75);
-			LL_mDelay(1500);
-			LL_TIM_OC_SetCompareCH1(TIM3,50);
-			LL_TIM_OC_SetCompareCH2(TIM3,50);
-			if(IR1==0 || IR2==0){
-				goto moving;
-			}
-		}
-		moving:
-		IR_Check();
-	}
-}
-
-void IR_Config(void){
-	LL_GPIO_InitTypeDef IR_Config;
+	//configure 1293d
 	LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOB);
 	
-	IR_Config.Mode = LL_GPIO_MODE_INPUT;
-	IR_Config.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
-	IR_Config.Speed = LL_GPIO_SPEED_FREQ_VERY_HIGH;
-	IR_Config.Pull = LL_GPIO_PULL_NO;
-	IR_Config.Pin = LL_GPIO_PIN_3;	// Set Pin to IR1
-	LL_GPIO_Init(GPIOB,&IR_Config);
+	l293d_initstruct.Mode = LL_GPIO_MODE_OUTPUT;
+	l293d_initstruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
+	l293d_initstruct.Pull = LL_GPIO_PULL_NO;
+	l293d_initstruct.Speed = LL_GPIO_SPEED_FREQ_VERY_HIGH;
+	l293d_initstruct.Pin = LL_GPIO_PIN_6;
+	LL_GPIO_Init(GPIOB, &l293d_initstruct);
 	
-	IR_Config.Pin = LL_GPIO_PIN_4;	// Set pin toI R2
-	LL_GPIO_Init(GPIOB,&IR_Config);
-}
-
-void IR_Check(void){
-	IR1 = LL_GPIO_IsInputPinSet(GPIOB,LL_GPIO_PIN_3);
-	IR2 = LL_GPIO_IsInputPinSet(GPIOB,LL_GPIO_PIN_4);
-	if(IR1==0 && IR2==0){
-		LL_GPIO_SetOutputPin(GPIOB,LL_GPIO_PIN_6);
-		LL_GPIO_SetOutputPin(GPIOB,LL_GPIO_PIN_7);
-		LL_TIM_OC_SetCompareCH1(TIM3,50);
-		LL_TIM_OC_SetCompareCH2(TIM3,50);
-	}
-	else if(IR1==0 && IR2==1){
-		LL_GPIO_SetOutputPin(GPIOB,LL_GPIO_PIN_6);
-		LL_GPIO_SetOutputPin(GPIOB,LL_GPIO_PIN_7);
-		LL_TIM_OC_SetCompareCH1(TIM3,75);
-		LL_TIM_OC_SetCompareCH2(TIM3,50);
-	}
-	else if(IR1==1 && IR2==0){
-		LL_GPIO_SetOutputPin(GPIOB,LL_GPIO_PIN_6);
-		LL_GPIO_SetOutputPin(GPIOB,LL_GPIO_PIN_7);
-		LL_TIM_OC_SetCompareCH1(TIM3,50);
-		LL_TIM_OC_SetCompareCH2(TIM3,75);
-	}
-}
-
-void Mtr_Config(void){
-	LL_GPIO_InitTypeDef Mtr_Config;
-	LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOB);
-	
-	Mtr_Config.Mode = LL_GPIO_MODE_OUTPUT;
-	Mtr_Config.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
-	Mtr_Config.Speed = LL_GPIO_SPEED_FREQ_VERY_HIGH;
-	Mtr_Config.Pull = LL_GPIO_PULL_NO;
-	Mtr_Config.Pin = LL_GPIO_PIN_6;
-	LL_GPIO_Init(GPIOB,&Mtr_Config);
-	
-	Mtr_Config.Pin = LL_GPIO_PIN_7;
-	LL_GPIO_Init(GPIOB,&Mtr_Config);
-}
-
-void Mtr_TIM_BASE_Config(void){
-	LL_TIM_InitTypeDef timbase_initstructure;
-  LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_TIM3);
-	
-	timbase_initstructure.ClockDivision = LL_TIM_CLOCKDIVISION_DIV2;
-  timbase_initstructure.CounterMode = LL_TIM_COUNTERMODE_UP;
-  timbase_initstructure.Autoreload = 100 - 1;
-  timbase_initstructure.Prescaler = 32000 - 1;
-  LL_TIM_Init(TIM3, &timbase_initstructure);
-  LL_TIM_EnableCounter(TIM3);
-}
-
-void Mtr_TIM_OC_GPIO_Config(void){
-	LL_GPIO_InitTypeDef gpio_init;
-	LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOB);
-	
-	gpio_init.Mode = LL_GPIO_MODE_ALTERNATE;
-	gpio_init.Alternate = LL_GPIO_AF_2;
-	gpio_init.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
-	gpio_init.Pin = LL_GPIO_PIN_6; // Motors
-	gpio_init.Pull = LL_GPIO_PULL_NO;
-	gpio_init.Speed = LL_GPIO_SPEED_FREQ_VERY_HIGH;
-	LL_GPIO_Init(GPIOB, &gpio_init);
-	
-	gpio_init.Pin = LL_GPIO_PIN_7;
-	LL_GPIO_Init(GPIOB, &gpio_init);
-}
-void Mtr_TIM_OC_Config(void){
-	Mtr_TIM_BASE_Config();
-	Mtr_TIM_OC_GPIO_Config();
-	LL_TIM_OC_InitTypeDef tim_oc_init;
-	
-	tim_oc_init.OCState = LL_TIM_OCSTATE_DISABLE;
-	tim_oc_init.OCMode = LL_TIM_OCMODE_PWM1;
-	tim_oc_init.OCPolarity = LL_TIM_OCPOLARITY_HIGH;
-	tim_oc_init.CompareValue = 50; // CCR
-	LL_TIM_OC_Init(TIM3, LL_TIM_CHANNEL_CH1, &tim_oc_init);
-	
-	tim_oc_init.CompareValue = 50; // CCR
-	LL_TIM_OC_Init(TIM3, LL_TIM_CHANNEL_CH2, &tim_oc_init);
-	
-	LL_TIM_CC_EnableChannel(TIM3, LL_TIM_CHANNEL_CH1);
-	LL_TIM_CC_EnableChannel(TIM3, LL_TIM_CHANNEL_CH2);
-	LL_TIM_EnableCounter(TIM3);
-}
-
-void Utr_GPIO_Config(void){
-	LL_GPIO_InitTypeDef timic_gpio;
 	LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOA);
-
-	timic_gpio.Mode = LL_GPIO_MODE_ALTERNATE;
-	timic_gpio.Pull = LL_GPIO_PULL_NO;
-	timic_gpio.Pin = LL_GPIO_PIN_1;
-	timic_gpio.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
-	timic_gpio.Speed = LL_GPIO_SPEED_FREQ_VERY_HIGH;
-	timic_gpio.Alternate = LL_GPIO_AF_1;
-	LL_GPIO_Init(GPIOA, &timic_gpio);
-	
-	timic_gpio.Mode = LL_GPIO_MODE_OUTPUT;
-	timic_gpio.Pin = LL_GPIO_PIN_2;
-	LL_GPIO_Init(GPIOA, &timic_gpio);
+	l293d_initstruct.Pin = LL_GPIO_PIN_10 | LL_GPIO_PIN_11;
+	LL_GPIO_Init(GPIOA, &l293d_initstruct);
 }
 
-void TIMx_IC_Config(void){
-	LL_TIM_IC_InitTypeDef timic;
+void Configl293d_2_GPIO(void)
+{
+	LL_GPIO_InitTypeDef l293d_initstruct;
+	
+	//configure 1293d
+	LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOB);
+	
+	l293d_initstruct.Mode = LL_GPIO_MODE_OUTPUT;
+	l293d_initstruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
+	l293d_initstruct.Pull = LL_GPIO_PULL_NO;
+	l293d_initstruct.Speed = LL_GPIO_SPEED_FREQ_VERY_HIGH;
+	l293d_initstruct.Pin = LL_GPIO_PIN_7;
+	LL_GPIO_Init(GPIOB, &l293d_initstruct);
+	
+	LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOA);
+	l293d_initstruct.Pin = LL_GPIO_PIN_3 | LL_GPIO_PIN_4;
+	LL_GPIO_Init(GPIOA, &l293d_initstruct);
+}
+
+void Motors_Config(void) {
+    LL_GPIO_InitTypeDef Motors_Config;
+    LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOB);
+
+    Motors_Config.Mode = LL_GPIO_MODE_OUTPUT;
+    Motors_Config.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
+    Motors_Config.Speed = LL_GPIO_SPEED_FREQ_VERY_HIGH;
+    Motors_Config.Pull = LL_GPIO_PULL_NO;
+
+    Motors_Config.Pin = MOTOR_LEFT_PIN1 | MOTOR_LEFT_PIN2;
+    LL_GPIO_Init(GPIOB, &Motors_Config);
+
+    Motors_Config.Pin = MOTOR_RIGHT_PIN1 | MOTOR_RIGHT_PIN2;
+    LL_GPIO_Init(GPIOB, &Motors_Config);
+}
+
+void Motors_SetSpeed(uint16_t leftSpeed, uint16_t rightSpeed) {
+    LL_TIM_OC_SetCompareCH1(TIM3, leftSpeed);
+    LL_TIM_OC_SetCompareCH2(TIM3, rightSpeed);
+}
+
+void Ultrasonic_Config(void) {
+    LL_GPIO_InitTypeDef ultrasonic_gpio;
+    LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOA);
+
+    ultrasonic_gpio.Mode = LL_GPIO_MODE_ALTERNATE;
+    ultrasonic_gpio.Pull = LL_GPIO_PULL_NO;
+    ultrasonic_gpio.Pin = US_TRIG_PIN;
+    ultrasonic_gpio.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
+    ultrasonic_gpio.Speed = LL_GPIO_SPEED_FREQ_VERY_HIGH;
+    ultrasonic_gpio.Alternate = LL_GPIO_AF_1;
+    LL_GPIO_Init(GPIOA, &ultrasonic_gpio);
+
+    ultrasonic_gpio.Mode = LL_GPIO_MODE_INPUT;
+    ultrasonic_gpio.Pin = US_ECHO_PIN;
+    LL_GPIO_Init(GPIOA, &ultrasonic_gpio);
+}
+
+void Ultrasonic_IC_Config(void) {
+  LL_TIM_IC_InitTypeDef timic;
 	LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_TIM2);
 
 	timic.ICActiveInput = LL_TIM_ACTIVEINPUT_DIRECTTI;
@@ -225,80 +203,57 @@ void TIMx_IC_Config(void){
 	LL_TIM_EnableCounter(TIM2);
 }
 
-void TIM2_IRQHandler(void)
-{
-	if(LL_TIM_IsActiveFlag_CC2(TIM2) == SET)
-	{
-		LL_TIM_ClearFlag_CC2(TIM2);
-		// Detect rising edge
-		if(uhICIndex == 0)
-		{
-			uwIC1 = LL_TIM_IC_GetCaptureCH2(TIM2);
-			uhICIndex = 1;
-		}
+void TIM2_IRQHandler(void) {
+    if (LL_TIM_IsActiveFlag_CC2(TIM2) == SET) {
+        LL_TIM_ClearFlag_CC2(TIM2);
 
-		// Detect falling edge
-		else if(uhICIndex == 1)
-		{
-			uwIC2 = LL_TIM_IC_GetCaptureCH2(TIM2);
-				
-			//calculate cycle
-			if(uwIC2 > uwIC1) //if ARR not overflow
-				uwDiff = uwIC2 - uwIC1;
-			else if(uwIC2 > uwIC1) //if ARR overflow
-				uwDiff = ((LL_TIM_GetAutoReload(TIM2) - uwIC1) + uwIC2) + 1;
-			
-			uhICIndex = 2;
-		}
-	}
+        if (uhICIndex == 0) {
+            uwIC1 = LL_TIM_IC_GetCaptureCH2(TIM2);
+            uhICIndex = 1;
+        } else if (uhICIndex == 1) {
+            uwIC2 = LL_TIM_IC_GetCaptureCH2(TIM2);
+
+            if (uwIC2 > uwIC1)
+                uwDiff = uwIC2 - uwIC1;
+            else if (uwIC2 > uwIC1)
+                uwDiff = ((LL_TIM_GetAutoReload(TIM2) - uwIC1) + uwIC2) + 1;
+
+            uhICIndex = 2;
+        }
+    }
 }
 
-void TIM_BASE_Config(uint16_t ARR){
-	LL_TIM_InitTypeDef timbase_initstructure;
-	
-	LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_TIM4);
-	//Time-base configure
-	timbase_initstructure.ClockDivision = LL_TIM_CLOCKDIVISION_DIV1;
-	timbase_initstructure.CounterMode = LL_TIM_COUNTERMODE_UP;
-	timbase_initstructure.Autoreload = ARR - 1;
-	timbase_initstructure.Prescaler =  TIMx_PSC- 1;
-	LL_TIM_Init(TIM4, &timbase_initstructure);
-	
-	LL_TIM_EnableCounter(TIM4); 
-}
-void TIM_OC_GPIO_Config(void){
-	LL_GPIO_InitTypeDef gpio_initstructure;
-	
-	LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOB);
-	
-	gpio_initstructure.Mode = LL_GPIO_MODE_ALTERNATE;
-	gpio_initstructure.Alternate = LL_GPIO_AF_2;
-	gpio_initstructure.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
-	gpio_initstructure.Pin = LL_GPIO_PIN_8;
-	gpio_initstructure.Pull = LL_GPIO_PULL_NO;
-	gpio_initstructure.Speed = LL_GPIO_SPEED_FREQ_VERY_HIGH;
-	LL_GPIO_Init(GPIOB, &gpio_initstructure);
-}
-void TIM_OC_Config(uint16_t note){
-	LL_TIM_OC_InitTypeDef tim_oc_initstructure;
-	
-	TIM_OC_GPIO_Config();
-	TIM_BASE_Config(note);
-	
-	tim_oc_initstructure.OCState = LL_TIM_OCSTATE_DISABLE;
-	tim_oc_initstructure.OCMode = LL_TIM_OCMODE_PWM1;
-	tim_oc_initstructure.OCPolarity = LL_TIM_OCPOLARITY_HIGH;
-	tim_oc_initstructure.CompareValue = LL_TIM_GetAutoReload(TIM4) / 2;
-	LL_TIM_OC_Init(TIM4, LL_TIM_CHANNEL_CH1, &tim_oc_initstructure);
-	/*Interrupt Configure*/
-	NVIC_SetPriority(TIM4_IRQn, 1);
-	NVIC_EnableIRQ(TIM4_IRQn);
-	LL_TIM_EnableIT_CC1(TIM4);
-	
-	/*Start Output Compare in PWM Mode*/
-	LL_TIM_CC_EnableChannel(TIM4, LL_TIM_CHANNEL_CH3);
-	LL_TIM_EnableCounter(TIM4);
+void TIM_BASE_Config(uint16_t ARR) {
+    LL_TIM_InitTypeDef timbase_initstructure;
 
+    LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_TIM4);
+
+    timbase_initstructure.ClockDivision = LL_TIM_CLOCKDIVISION_DIV1;
+    timbase_initstructure.CounterMode = LL_TIM_COUNTERMODE_UP;
+    timbase_initstructure.Autoreload = ARR - 1;
+    timbase_initstructure.Prescaler = TIMx_PSC - 1;
+    LL_TIM_Init(TIM4, &timbase_initstructure);
+
+    LL_TIM_EnableCounter(TIM4);
+}
+
+void TIM_OC_Config(uint16_t note) {
+    LL_TIM_OC_InitTypeDef tim_oc_initstructure;
+
+    TIM_BASE_Config(note);
+
+    tim_oc_initstructure.OCState = LL_TIM_OCSTATE_DISABLE;
+    tim_oc_initstructure.OCMode = LL_TIM_OCMODE_PWM1;
+    tim_oc_initstructure.OCPolarity = LL_TIM_OCPOLARITY_HIGH;
+    tim_oc_initstructure.CompareValue = LL_TIM_GetAutoReload(TIM4) / 2;
+    LL_TIM_OC_Init(TIM4, LL_TIM_CHANNEL_CH1, &tim_oc_initstructure);
+
+    NVIC_SetPriority(TIM4_IRQn, 1);
+    NVIC_EnableIRQ(TIM4_IRQn);
+    LL_TIM_EnableIT_CC1(TIM4);
+
+    LL_TIM_CC_EnableChannel(TIM4, LL_TIM_CHANNEL_CH3);
+    LL_TIM_EnableCounter(TIM4);
 }
 
 void SystemClock_Config(void)
